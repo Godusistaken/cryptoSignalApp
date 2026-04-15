@@ -31,6 +31,22 @@ function buildHistoryWhereClause(options = {}) {
   };
 }
 
+function buildTrackableHistoryWhereClause(tableAlias = '') {
+  const prefix = tableAlias ? `${tableAlias}.` : '';
+
+  // Only actionable signals with a full outcome framework should participate in live performance stats.
+  // This excludes legacy/non-actionable rows such as WAIT/NEUTRAL entries without direction or TP/SL levels.
+  return `
+    ${prefix}direction IN ('BUY', 'SELL')
+    AND ${prefix}entry_price IS NOT NULL
+    AND ${prefix}stop_loss IS NOT NULL
+    AND ${prefix}take_profit_1 IS NOT NULL
+    AND ${prefix}take_profit_2 IS NOT NULL
+    AND ${prefix}take_profit_3 IS NOT NULL
+    AND ${prefix}status IN ('OPEN', 'WIN_TP1', 'WIN_TP2', 'WIN_TP3', 'LOSS_SL', 'EXPIRED')
+  `.trim();
+}
+
 const SignalModel = {
   upsertSignal(d) {
     const stmt = db.prepare(`
@@ -120,7 +136,8 @@ const SignalModel = {
     return db.prepare(`
       SELECT *
       FROM signal_history
-      WHERE status = 'OPEN'
+      WHERE ${buildTrackableHistoryWhereClause()}
+        AND status = 'OPEN'
       ORDER BY created_at ASC, id ASC
     `).all();
   },
@@ -137,6 +154,7 @@ const SignalModel = {
         SUM(CASE WHEN status = 'WIN_TP2' THEN 1 ELSE 0 END) AS tp2Wins,
         SUM(CASE WHEN status = 'WIN_TP3' THEN 1 ELSE 0 END) AS tp3Wins
       FROM signal_history
+      WHERE ${buildTrackableHistoryWhereClause()}
     `).get() || {};
 
     const totalSignals = row.totalSignals || 0;
