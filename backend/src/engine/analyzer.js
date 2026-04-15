@@ -3,8 +3,53 @@ const RiskManager = require('./riskManager');
 const logger = require('../utils/logger');
 
 class Analyzer {
+  static getLatestClosedIndex(closeTimes = [], fallbackLength = 0, now = Date.now()) {
+    const lastIndex = fallbackLength - 1;
+    if (lastIndex < 0) return -1;
+
+    if (!Array.isArray(closeTimes) || closeTimes.length <= lastIndex) {
+      return lastIndex;
+    }
+
+    const lastCloseTime = closeTimes[lastIndex];
+    if (Number.isFinite(lastCloseTime) && lastCloseTime > now) {
+      return lastIndex - 1;
+    }
+
+    return lastIndex;
+  }
+
+  static buildClosedCandleContext(ohlcv, now = Date.now()) {
+    const opens = Array.isArray(ohlcv?.opens) ? ohlcv.opens : [];
+    const highs = Array.isArray(ohlcv?.highs) ? ohlcv.highs : [];
+    const lows = Array.isArray(ohlcv?.lows) ? ohlcv.lows : [];
+    const closes = Array.isArray(ohlcv?.closes) ? ohlcv.closes : [];
+    const volumes = Array.isArray(ohlcv?.volumes) ? ohlcv.volumes : [];
+    const quoteVolumes = Array.isArray(ohlcv?.quoteVolumes) ? ohlcv.quoteVolumes : [];
+    const closeTimes = Array.isArray(ohlcv?.closeTimes) ? ohlcv.closeTimes : [];
+
+    const normalizedLength = Math.min(opens.length, highs.length, lows.length, closes.length, volumes.length);
+    const latestClosedIndex = this.getLatestClosedIndex(closeTimes, normalizedLength, now);
+    const closedLength = latestClosedIndex + 1;
+
+    return {
+      raw: { opens, highs, lows, closes, volumes, quoteVolumes, closeTimes },
+      hasOpenCandle: latestClosedIndex >= 0 && latestClosedIndex < normalizedLength - 1,
+      latestClosedIndex,
+      lastRawIndex: normalizedLength - 1,
+      opens: closedLength > 0 ? opens.slice(0, closedLength) : [],
+      highs: closedLength > 0 ? highs.slice(0, closedLength) : [],
+      lows: closedLength > 0 ? lows.slice(0, closedLength) : [],
+      closes: closedLength > 0 ? closes.slice(0, closedLength) : [],
+      volumes: closedLength > 0 ? volumes.slice(0, closedLength) : [],
+      quoteVolumes: closedLength > 0 ? quoteVolumes.slice(0, closedLength) : [],
+      closeTimes: closedLength > 0 ? closeTimes.slice(0, closedLength) : [],
+    };
+  }
+
   static analyze(ohlcv, symbol, timeframe = '1h') {
-    const { opens, highs, lows, closes, volumes, quoteVolumes, closeTimes } = ohlcv;
+    const closed = this.buildClosedCandleContext(ohlcv);
+    const { opens, highs, lows, closes, volumes, quoteVolumes, closeTimes, raw, latestClosedIndex, lastRawIndex, hasOpenCandle } = closed;
     if (!closes || closes.length < 200) { logger.warn(`Yetersiz veri: ${symbol}`); return null; }
 
     const currentPrice = closes[closes.length - 1];
@@ -13,16 +58,12 @@ class Analyzer {
     const ema200Data = Indicators.calculateEMA200Trend(closes);
     const adxData = Indicators.calculateADX(highs, lows, closes, 14);
     const atr = Indicators.calculateATR(highs, lows, closes, 14);
-    const lastIndex = closes.length - 1;
-    const latestClosedIndex = Array.isArray(closeTimes) && closeTimes.length > 1 && closeTimes[lastIndex] > Date.now()
-      ? lastIndex - 1
-      : lastIndex;
     const volumeData = Indicators.calculateVolumeAnalysis({
       closes,
       volumes,
       baseVolumes: volumes,
       quoteVolumes,
-      currentIndex: latestClosedIndex,
+      currentIndex: closes.length - 1,
     }, 20);
     const bb = Indicators.calculateBollingerBands(closes, 20, 2);
     const hasValidVolumeRatio = Number.isFinite(volumeData.ratio) && volumeData.ratio >= 0;
@@ -34,11 +75,12 @@ class Analyzer {
       exchange: 'binance',
       source: 'binance-klines',
       selectedBarIndex: latestClosedIndex,
-      selectedBarType: latestClosedIndex === lastIndex ? 'latest_closed_or_only_bar' : 'previous_closed_bar',
-      selectedBarReason: latestClosedIndex === lastIndex ? 'last kline already closed or close time unavailable' : 'latest kline still open; using previous closed bar',
-      baseVolume: latestClosedIndex >= 0 ? volumes[latestClosedIndex] : null,
-      quoteVolume: latestClosedIndex >= 0 && Array.isArray(quoteVolumes) ? quoteVolumes[latestClosedIndex] : null,
-      closePrice: latestClosedIndex >= 0 ? closes[latestClosedIndex] : null,
+      selectedBarType: hasOpenCandle ? 'previous_closed_bar' : 'latest_closed_or_only_bar',
+      selectedBarReason: hasOpenCandle ? 'last kline still open; excluded from all indicator and scoring calculations' : 'last kline already closed or close time unavailable',
+      rawLastBarIndex: lastRawIndex,
+      baseVolume: closes.length > 0 ? volumes[closes.length - 1] : null,
+      quoteVolume: closes.length > 0 && Array.isArray(quoteVolumes) ? quoteVolumes[closes.length - 1] : null,
+      closePrice: currentPrice,
       currentUsdVolume: volumeData.currentUsdVolume,
       averageUsdVolume: volumeData.averageUsdVolume,
       volumeRatio: volumeData.ratio,
@@ -133,11 +175,15 @@ class Analyzer {
     confidence = Math.round(confidence * 100) / 100;
 
     const risk = RiskManager.calculateLevels(currentPrice, atr, direction, adxData.adx, volumeData.ratio);
+    const livePrice = hasOpenCandle && raw.closes.length > 0 ? raw.closes[raw.closes.length - 1] : currentPrice;
 
     return {
       symbol, timeframe, signalType, confidence, currentPrice,
       openPrice: opens[opens.length - 1], highPrice: highs[highs.length - 1], lowPrice: lows[lows.length - 1],
       volume: volumes[volumes.length - 1],
+      livePrice,
+      confirmedCandleCloseTime: closeTimes[closeTimes.length - 1] || null,
+      hasOpenCandle,
       rsi, rsiSignal, macdLine: macd.macdLine, macdSignalLine: macd.signalLine,
       macdHistogram: macd.histogram, macdCrossover: macd.crossover,
       ema200: ema200Data.ema200, priceVsEma200: ema200Data.trend, ema200Distance: ema200Data.distance,
