@@ -1,12 +1,16 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../utils/colors';
 import { useFavorites } from '../store/FavoritesContext';
 import SignalService from '../services/signalService';
 import SignalCard from '../components/SignalCard';
+import ScreenHeader from '../components/ScreenHeader';
+import StateView from '../components/StateView';
+import { Spacing } from '../utils/theme';
 
 export default function FavoritesScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const { favorites } = useFavorites();
   const [signals, setSignals] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -17,15 +21,18 @@ export default function FavoritesScreen({ navigation }) {
     setError(null);
     try {
       const res = await SignalService.getAllSignals();
-      setSignals((res.data || []).filter(s => favorites.includes(s.symbol)));
+      setSignals((res.data || []).filter((s) => favorites.includes(s.symbol)));
     } catch (e) {
-      const msg = e.userMessage || 'Favoriler yüklenemedi';
+      const msg = e.userMessage || 'Favoriler yuklenemedi';
       setError(msg);
+      Alert.alert('Hata', msg);
     }
     setLoading(false);
   };
 
-  useEffect(() => { fetch(); }, [favorites]);
+  useEffect(() => {
+    fetch();
+  }, [favorites]);
 
   const renderItem = useCallback(({ item }) => (
     <SignalCard signal={item} onPress={(s) => navigation.navigate('Detail', { signal: s, symbol: s.symbol })} />
@@ -34,25 +41,39 @@ export default function FavoritesScreen({ navigation }) {
   const keyExtractor = useCallback((item) => item.symbol, []);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Favoriler</Text>
-        <Text style={styles.subtitle}>{signals.length} coin</Text>
-        {error && <Text style={styles.errorText}>{error}</Text>}
+        <ScreenHeader
+          title="Favoriler"
+          subtitle={
+            favorites.length === 0
+              ? 'Takip etmek istedigin coinleri yildizlayarak burada topla.'
+              : `${signals.length} aktif favori coin`
+          }
+        />
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
       </View>
+
       <FlatList
         data={signals}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        removeClippedSubviews={true}
+        removeClippedSubviews
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetch} tintColor={Colors.primary} colors={[Colors.primary]} />}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={styles.listContent}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="star-outline" size={48} color={Colors.textMuted} />
-            <Text style={styles.emptyTitle}>Favori yok</Text>
-            <Text style={styles.emptyText}>Coin kartindaki yildiza bas</Text>
-          </View>
+          <StateView
+            icon="star-outline"
+            title={favorites.length === 0 ? 'Favori listen bos' : 'Favori coin bulunamadi'}
+            message={
+              favorites.length === 0
+                ? 'Sinyal kartlarindaki yildiz ile coinleri hizlica ekleyebilirsin.'
+                : 'Favori coinler icin guncel veri geldiginde burada gorunecek.'
+            }
+            actionLabel={favorites.length === 0 ? undefined : 'Yenile'}
+            onAction={favorites.length === 0 ? undefined : fetch}
+          />
         }
       />
     </View>
@@ -60,12 +81,27 @@ export default function FavoritesScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: { paddingHorizontal: 16, paddingTop: 60, paddingBottom: 8 },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.textPrimary },
-  subtitle: { fontSize: 13, color: Colors.textMuted },
-  errorText: { color: Colors.bearish, fontSize: 12, marginTop: 4 },
-  empty: { alignItems: 'center', paddingVertical: 80 },
-  emptyTitle: { color: Colors.textPrimary, fontSize: 18, fontWeight: '600', marginTop: 16 },
-  emptyText: { color: Colors.textMuted, fontSize: 14, marginTop: 8 },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  header: {
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.sm,
+  },
+  errorText: {
+    color: Colors.bearish,
+    fontSize: 12,
+    marginTop: -6,
+    marginBottom: 8,
+  },
+  listContent: {
+    paddingHorizontal: Spacing.md,
+    paddingBottom: 120,
+    paddingTop: 4,
+    flexGrow: 1,
+  },
+  separator: {
+    height: 12,
+  },
 });

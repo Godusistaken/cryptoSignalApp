@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../utils/colors';
 
 import HomeScreen from '../screens/HomeScreen';
@@ -33,11 +34,20 @@ function FavStack() {
 }
 
 export default function AppNavigator() {
+  const insets = useSafeAreaInsets();
+
   return (
     <NavigationContainer>
       <Tab.Navigator screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: { backgroundColor: Colors.surface, borderTopColor: Colors.border, height: 85, paddingBottom: 25, paddingTop: 8 },
+        tabBarStyle: {
+          backgroundColor: Colors.surface,
+          borderTopColor: Colors.border,
+          borderTopWidth: 1,
+          height: 64 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 12),
+          paddingTop: 10,
+        },
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textMuted,
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
