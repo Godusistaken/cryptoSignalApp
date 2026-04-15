@@ -21,6 +21,7 @@ class SignalService {
         SignalModel.addToHistory({
           signalId: saved.id, symbol: analysis.symbol, timeframe: analysis.timeframe,
           signalType: analysis.signalType, confidence: analysis.confidence, currentPrice: analysis.currentPrice,
+          direction: analysis.direction, entryPrice: analysis.currentPrice,
           rsi: analysis.rsi, macdHistogram: analysis.macdHistogram, adx: analysis.adx,
           volumeRatio: analysis.volumeRatio, bbPosition: analysis.bbPosition,
           trend1h: analysis.trend1h, trend4h: analysis.trend4h,
@@ -45,6 +46,7 @@ class SignalService {
       SignalModel.addToHistory({
         signalId: null, symbol: analysis.symbol, timeframe: analysis.timeframe,
         signalType: analysis.signalType, confidence: analysis.confidence, currentPrice: analysis.currentPrice,
+        direction: analysis.direction, entryPrice: analysis.currentPrice,
         rsi: analysis.rsi, macdHistogram: analysis.macdHistogram, adx: analysis.adx,
         volumeRatio: analysis.volumeRatio, bbPosition: analysis.bbPosition,
         trend1h: analysis.trend1h, trend4h: analysis.trend4h,

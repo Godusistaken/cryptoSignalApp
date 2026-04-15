@@ -97,6 +97,11 @@ db.exec(`
     buy_score INTEGER,
     sell_score INTEGER,
     bonus_score INTEGER,
+    direction TEXT,
+    entry_price REAL,
+    status TEXT DEFAULT 'OPEN',
+    resolved_at TEXT,
+    last_checked_candle_time INTEGER,
     created_at TEXT DEFAULT (datetime('now'))
   );
 
@@ -104,6 +109,42 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_signals_created ON signals(created_at);
   CREATE INDEX IF NOT EXISTS idx_history_symbol ON signal_history(symbol);
   CREATE INDEX IF NOT EXISTS idx_history_created ON signal_history(created_at);
+`);
+
+function ensureColumn(tableName, columnName, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  const exists = columns.some((column) => column.name === columnName);
+  if (!exists) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+}
+
+ensureColumn('signal_history', 'direction', 'TEXT');
+ensureColumn('signal_history', 'entry_price', 'REAL');
+ensureColumn('signal_history', 'status', "TEXT DEFAULT 'OPEN'");
+ensureColumn('signal_history', 'resolved_at', 'TEXT');
+ensureColumn('signal_history', 'last_checked_candle_time', 'INTEGER');
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_history_status ON signal_history(status);
+`);
+
+db.exec(`
+  UPDATE signal_history
+  SET status = 'OPEN'
+  WHERE status IS NULL;
+
+  UPDATE signal_history
+  SET entry_price = current_price
+  WHERE entry_price IS NULL;
+
+  UPDATE signal_history
+  SET direction = CASE
+    WHEN signal_type LIKE '%BUY%' THEN 'BUY'
+    WHEN signal_type LIKE '%SELL%' THEN 'SELL'
+    ELSE 'NEUTRAL'
+  END
+  WHERE direction IS NULL;
 `);
 
 // Varsayilan coinleri ekle

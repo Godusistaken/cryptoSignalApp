@@ -92,6 +92,58 @@ class BinanceFetcher {
     return data;
   }
 
+  normalizeKlines(rawKlines = []) {
+    const opens = [];
+    const highs = [];
+    const lows = [];
+    const closes = [];
+    const volumes = [];
+    const quoteVolumes = [];
+    const closeTimes = [];
+
+    for (const c of rawKlines) {
+      opens.push(parseFloat(c[1]));
+      highs.push(parseFloat(c[2]));
+      lows.push(parseFloat(c[3]));
+      closes.push(parseFloat(c[4]));
+      volumes.push(parseFloat(c[5]));
+      quoteVolumes.push(parseFloat(c[7]));
+      closeTimes.push(c[6]);
+    }
+
+    return { opens, highs, lows, closes, volumes, quoteVolumes, closeTimes };
+  }
+
+  stripOpenCandle(ohlcv, now = Date.now()) {
+    const closeTimes = Array.isArray(ohlcv?.closeTimes) ? ohlcv.closeTimes : [];
+    const lastIndex = closeTimes.length - 1;
+    if (lastIndex < 0) return ohlcv;
+
+    const hasOpenCandle = Number.isFinite(closeTimes[lastIndex]) && closeTimes[lastIndex] > now;
+    if (!hasOpenCandle) return ohlcv;
+
+    const closedLength = lastIndex;
+    return {
+      opens: ohlcv.opens.slice(0, closedLength),
+      highs: ohlcv.highs.slice(0, closedLength),
+      lows: ohlcv.lows.slice(0, closedLength),
+      closes: ohlcv.closes.slice(0, closedLength),
+      volumes: ohlcv.volumes.slice(0, closedLength),
+      quoteVolumes: ohlcv.quoteVolumes.slice(0, closedLength),
+      closeTimes: ohlcv.closeTimes.slice(0, closedLength),
+    };
+  }
+
+  async fetchClosedKlinesSince(symbol, interval = '1h', { startTime, endTime, limit = 1000 } = {}) {
+    const s = symbol.replace('/', '');
+    const params = { symbol: s, interval, limit };
+    if (Number.isFinite(startTime)) params.startTime = startTime;
+    if (Number.isFinite(endTime)) params.endTime = endTime;
+
+    const res = await this.client.get('/api/v3/klines', { params });
+    return this.stripOpenCandle(this.normalizeKlines(res.data));
+  }
+
   async fetchMultiTimeframe(symbol) {
     const [data1h, data4h] = await Promise.all([
       this.fetchOHLCV(symbol, '1h', 300),
