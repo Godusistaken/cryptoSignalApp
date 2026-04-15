@@ -19,11 +19,66 @@ import StateView from '../components/StateView';
 import { Radius, Spacing } from '../utils/theme';
 
 const STARTER_PROMPTS = [
-  'Analyze BTC',
-  'Latest ETH news',
-  'Compare SOL vs ADA',
-  'What does ONT do?',
+  'BTC ne iş yapar?',
+  'SOL ve ADA karşılaştır',
+  'ETH için temel riskler neler?',
+  'ONT projesini açıkla',
 ];
+
+const BETA_SCOPES = [
+  'Proje açıklaması',
+  'Temel görünüm',
+  'Risk özeti',
+  'Karşılaştırma',
+  'Haber denemesi',
+];
+
+const MODE_LABELS = {
+  analysis: 'Temel görünüm',
+  news: 'Haber denemesi',
+  compare: 'Karşılaştırma',
+  project: 'Proje özeti',
+  risk: 'Risk özeti',
+};
+
+const BETA_DESCRIPTION = 'Beta: Bu özellik deneme aşamasındadır. Yanıtlar her zaman tutarlı veya güncel olmayabilir.';
+const PROVIDER_BUSY_MESSAGE = 'AI özelliği şu anda yoğun veya geçici olarak kullanılamıyor. Lütfen biraz sonra tekrar deneyin.';
+const NETWORK_FALLBACK_MESSAGE = 'AI özelliğine şu anda bağlanılamıyor. Lütfen bağlantını kontrol edip tekrar dene.';
+
+function normalizeAIError(error) {
+  const status = error?.response?.status;
+  const rawMessage = String(error?.response?.data?.error?.message || error?.userMessage || error?.message || '').toLowerCase();
+
+  if (rawMessage.includes('internet baglantisi yok')) {
+    return NETWORK_FALLBACK_MESSAGE;
+  }
+
+  if (rawMessage.includes('mesaj boş') || rawMessage.includes('mesaj gerekli')) {
+    return 'Bir soru yazarak deneyebilirsin.';
+  }
+
+  if (rawMessage.includes('1200 karakter')) {
+    return 'Sorunu biraz daha kısa yazarak tekrar deneyebilirsin.';
+  }
+
+  if (
+    status === 429
+    || status === 502
+    || status === 503
+    || status === 504
+    || rawMessage.includes('kota')
+    || rawMessage.includes('rate')
+    || rawMessage.includes('timeout')
+    || rawMessage.includes('zaman aşımı')
+    || rawMessage.includes('yanıtı alınamadı')
+    || rawMessage.includes('yaniti alinamadi')
+    || rawMessage.includes('sunucuya ulasilamiyor')
+  ) {
+    return PROVIDER_BUSY_MESSAGE;
+  }
+
+  return 'AI Beta şu anda bu isteğe net bir yanıt üretemedi. Lütfen farklı bir ifadeyle tekrar deneyin.';
+}
 
 export default function AIScreen() {
   const insets = useSafeAreaInsets();
@@ -54,6 +109,10 @@ export default function AIScreen() {
       pushMessage({
         role: 'ai',
         text: payload.answer,
+        title: payload.title,
+        summary: payload.summary,
+        sections: payload.sections || [],
+        followUp: payload.followUp,
         disclaimer: payload.disclaimer,
         sources: payload.sources || [],
         detectedCoins: payload.detectedCoins || [],
@@ -62,11 +121,11 @@ export default function AIScreen() {
     } catch (e) {
       pushMessage({
         role: 'error',
-        text: e.userMessage || 'AI yaniti alinamadi.',
+        text: normalizeAIError(e),
       });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const openSource = async (url) => {
@@ -84,12 +143,12 @@ export default function AIScreen() {
     >
       <View style={styles.header}>
         <ScreenHeader
-          title="AI Asistan"
-          subtitle="Egitim odakli crypto analiz yardimcisi. Proje, risk, anlati ve haber ozetleri icin kullan."
+          title="AI Beta"
+          subtitle="Proje açıklaması, temel görünüm, risk çerçevesi ve yüksek seviyeli karşılaştırmalar için yardımcı deneyim."
           right={(
             <View style={styles.betaChip}>
-              <Ionicons name="sparkles" size={14} color={Colors.primaryLight} />
-              <Text style={styles.betaText}>Gemini</Text>
+              <Ionicons name="flask-outline" size={14} color={Colors.primaryLight} />
+              <Text style={styles.betaText}>Beta</Text>
             </View>
           )}
         />
@@ -102,32 +161,60 @@ export default function AIScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.introCard}>
-          <Text style={styles.introTitle}>Neler sorabilirsin?</Text>
-          <Text style={styles.introText}>Coin analizi, proje ozeti, riskler, ekosistem, sentiment ve uygun oldugunda verifiable latest news ozetleri.</Text>
-          <View style={styles.promptRow}>
-            {STARTER_PROMPTS.map((prompt) => (
-              <TouchableOpacity key={prompt} style={styles.promptChip} onPress={() => sendPrompt(prompt)} activeOpacity={0.85}>
-                <Text style={styles.promptChipText}>{prompt}</Text>
-              </TouchableOpacity>
+          <View style={styles.introTopRow}>
+            <Text style={styles.introTitle}>Kontrollü beta deneyimi</Text>
+            <View style={styles.subtleBadge}>
+              <Text style={styles.subtleBadgeText}>İsteğe bağlı</Text>
+            </View>
+          </View>
+          <Text style={styles.betaNotice}>{BETA_DESCRIPTION}</Text>
+          <Text style={styles.introText}>
+            En iyi sonuçlar proje mantığı, temel çerçeve, risk görünümü ve coin karşılaştırması gibi sorularda gelir.
+            Haber akışı ise sınırlı ve deneysel kalabilir.
+          </Text>
+
+          <View style={styles.scopeRow}>
+            {BETA_SCOPES.map((scope) => (
+              <View key={scope} style={[styles.scopeChip, scope === 'Haber denemesi' && styles.scopeChipMuted]}>
+                <Text style={[styles.scopeChipText, scope === 'Haber denemesi' && styles.scopeChipTextMuted]}>{scope}</Text>
+              </View>
             ))}
+          </View>
+
+          <View style={styles.promptGroup}>
+            <Text style={styles.promptGroupTitle}>Önerilen başlangıç soruları</Text>
+            <View style={styles.promptRow}>
+              {STARTER_PROMPTS.map((prompt) => (
+                <TouchableOpacity key={prompt} style={styles.promptChip} onPress={() => sendPrompt(prompt)} activeOpacity={0.85}>
+                  <Text style={styles.promptChipText}>{prompt}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
 
         {messages.length === 0 ? (
           <StateView
             compact
-            icon="chatbubble-ellipses-outline"
-            title="Hazir"
-            message="Bir soru yaz veya alttaki orneklerden biriyle basla."
+            icon="sparkles-outline"
+            title="AI Beta hazır"
+            message="Kısa ve net sorularla başla. Proje açıklaması, risk özeti ve karşılaştırma soruları genelde daha tutarlı çalışır."
           />
         ) : null}
 
         {messages.map((message) => (
-          <View key={message.id} style={[styles.messageCard, message.role === 'user' ? styles.userBubble : styles.aiBubble, message.role === 'error' && styles.errorBubble]}>
+          <View
+            key={message.id}
+            style={[
+              styles.messageCard,
+              message.role === 'user' ? styles.userBubble : styles.aiBubble,
+              message.role === 'error' && styles.errorBubble,
+            ]}
+          >
             {message.role !== 'user' && message.mode ? (
               <View style={styles.metaRow}>
                 <View style={styles.modeChip}>
-                  <Text style={styles.modeChipText}>{message.mode}</Text>
+                  <Text style={styles.modeChipText}>{MODE_LABELS[message.mode] || message.mode}</Text>
                 </View>
                 {message.detectedCoins?.length ? (
                   <Text style={styles.detectedText}>{message.detectedCoins.join(', ')}</Text>
@@ -135,11 +222,51 @@ export default function AIScreen() {
               </View>
             ) : null}
 
-            <Text style={[styles.bubbleText, message.role === 'user' && styles.userBubbleText]}>{message.text}</Text>
+            {message.role === 'ai' && message.title ? <Text style={styles.answerTitle}>{message.title}</Text> : null}
+            {message.role === 'ai' && message.summary ? <Text style={styles.summaryText}>{message.summary}</Text> : null}
+
+            {message.role === 'ai' && message.sections?.length ? (
+              <View style={styles.sectionList}>
+                {message.sections.map((section, index) => (
+                  <View key={`${message.id}-section-${index}`} style={styles.sectionBlock}>
+                    <Text style={styles.sectionHeading}>{section.heading}</Text>
+                    {section.body ? <Text style={styles.sectionBody}>{section.body}</Text> : null}
+                    {section.bullets?.length ? (
+                      <View style={styles.bulletList}>
+                        {section.bullets.map((bullet, bulletIndex) => (
+                          <View key={`${message.id}-bullet-${index}-${bulletIndex}`} style={styles.bulletRow}>
+                            <View style={styles.bulletDot} />
+                            <Text style={styles.bulletText}>{bullet}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {message.role === 'user' ? (
+              <Text style={[styles.bubbleText, styles.userBubbleText]}>{message.text}</Text>
+            ) : null}
+
+            {message.role === 'ai' && message.mode === 'news' ? (
+              <View style={styles.experimentalNote}>
+                <Ionicons name="information-circle-outline" size={15} color={Colors.textMuted} />
+                <Text style={styles.experimentalNoteText}>Haber akışı beta kapsamında sınırlı ve deneysel olabilir.</Text>
+              </View>
+            ) : null}
+
+            {message.role === 'ai' && message.followUp ? (
+              <View style={styles.followUpCard}>
+                <Text style={styles.followUpLabel}>Devam sorusu için</Text>
+                <Text style={styles.followUpText}>{message.followUp}</Text>
+              </View>
+            ) : null}
 
             {message.sources?.length ? (
               <View style={styles.sourcesWrap}>
-                <Text style={styles.sourcesTitle}>Sources</Text>
+                <Text style={styles.sourcesTitle}>Kaynaklar</Text>
                 {message.sources.map((source) => (
                   <TouchableOpacity key={source.url} onPress={() => openSource(source.url)} activeOpacity={0.75} style={styles.sourceItem}>
                     <Ionicons name="link-outline" size={14} color={Colors.primaryLight} />
@@ -149,15 +276,21 @@ export default function AIScreen() {
               </View>
             ) : null}
 
-            {message.disclaimer ? <Text style={styles.disclaimer}>{message.disclaimer}</Text> : null}
+            {message.disclaimer ? (
+              <View style={styles.disclaimerBox}>
+                <Text style={styles.disclaimer}>{message.disclaimer}</Text>
+              </View>
+            ) : null}
+
+            {message.role === 'error' ? <Text style={styles.errorText}>{message.text}</Text> : null}
           </View>
         ))}
 
         {loading ? (
           <View style={[styles.messageCard, styles.aiBubble]}>
             <View style={styles.loadingRow}>
-              <Ionicons name="sparkles" size={16} color={Colors.primaryLight} />
-              <Text style={styles.loadingText}>Gemini dusunuyor...</Text>
+              <Ionicons name="flask-outline" size={16} color={Colors.primaryLight} />
+              <Text style={styles.loadingText}>AI Beta yanıtı hazırlanıyor...</Text>
             </View>
           </View>
         ) : null}
@@ -166,7 +299,7 @@ export default function AIScreen() {
       <View style={[styles.inputRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <TextInput
           style={styles.input}
-          placeholder="BTC analiz et, ETH haberi sor, iki coin karsilastir..."
+          placeholder="BTC ne iş yapar, SOL ve ADA karşılaştır, ETH için riskler..."
           placeholderTextColor={Colors.textMuted}
           value={input}
           onChangeText={setInput}
@@ -222,23 +355,81 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     padding: Spacing.md,
+    gap: 12,
+  },
+  introTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   introTitle: {
+    flex: 1,
     fontSize: 15,
     fontWeight: '700',
     color: Colors.textPrimary,
-    marginBottom: 6,
+  },
+  subtleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  subtleBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  betaNotice: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: Colors.textSecondary,
   },
   introText: {
     fontSize: 13,
     lineHeight: 20,
     color: Colors.textSecondary,
   },
+  scopeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  scopeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.primarySoft,
+  },
+  scopeChipMuted: {
+    backgroundColor: Colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  scopeChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primaryLight,
+  },
+  scopeChipTextMuted: {
+    color: Colors.textMuted,
+  },
+  promptGroup: {
+    gap: 10,
+  },
+  promptGroupTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   promptRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 12,
   },
   promptChip: {
     paddingHorizontal: 12,
@@ -254,9 +445,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   messageCard: {
-    maxWidth: '92%',
-    padding: 14,
-    borderRadius: 16,
+    maxWidth: '96%',
+    padding: 15,
+    borderRadius: 18,
   },
   userBubble: {
     backgroundColor: Colors.primary,
@@ -276,7 +467,7 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 8,
     marginBottom: 10,
@@ -293,12 +484,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.primaryLight,
-    textTransform: 'uppercase',
   },
   detectedText: {
     flex: 1,
     textAlign: 'right',
     fontSize: 11,
+    lineHeight: 16,
     color: Colors.textMuted,
   },
   bubbleText: {
@@ -309,8 +500,94 @@ const styles = StyleSheet.create({
   userBubbleText: {
     color: Colors.textPrimary,
   },
-  sourcesWrap: {
+  answerTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginBottom: 8,
+  },
+  summaryText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: Colors.textSecondary,
+    paddingBottom: 2,
+  },
+  sectionList: {
+    gap: 14,
     marginTop: 12,
+  },
+  sectionBlock: {
+    gap: 8,
+    paddingBottom: 2,
+  },
+  sectionHeading: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  sectionBody: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: Colors.textSecondary,
+  },
+  bulletList: {
+    gap: 8,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  bulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.primaryLight,
+    marginTop: 8,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 22,
+    color: Colors.textSecondary,
+  },
+  experimentalNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 14,
+    padding: 10,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceLight,
+  },
+  experimentalNoteText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: Colors.textMuted,
+  },
+  followUpCard: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  followUpLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primaryLight,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  followUpText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: Colors.textSecondary,
+  },
+  sourcesWrap: {
+    marginTop: 14,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
@@ -323,8 +600,9 @@ const styles = StyleSheet.create({
   },
   sourceItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
+    paddingVertical: 2,
   },
   sourceText: {
     flex: 1,
@@ -332,11 +610,22 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: Colors.primaryLight,
   },
+  disclaimerBox: {
+    marginTop: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceLight,
+  },
   disclaimer: {
-    marginTop: 12,
     fontSize: 12,
     lineHeight: 18,
     color: Colors.textMuted,
+  },
+  errorText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: Colors.textPrimary,
   },
   loadingRow: {
     flexDirection: 'row',

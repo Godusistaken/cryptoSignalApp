@@ -58,7 +58,7 @@ export default function AppNavigator() {
       })}>
         <Tab.Screen name="Sinyaller" component={HomeStack} />
         <Tab.Screen name="Favoriler" component={FavStack} />
-        <Tab.Screen name="AI" component={AIScreen} />
+        <Tab.Screen name="AI" component={AIScreen} options={{ tabBarLabel: 'AI Beta' }} />
         <Tab.Screen name="Ayarlar" component={SettingsScreen} />
       </Tab.Navigator>
     </NavigationContainer>
