@@ -4,12 +4,24 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../utils/colors';
-import { formatTimeAgo } from '../utils/formatters';
+import { formatPercent, formatTimeAgo } from '../utils/formatters';
 import SignalService from '../services/signalService';
 import SignalCard from '../components/SignalCard';
 import ScreenHeader from '../components/ScreenHeader';
 import StateView from '../components/StateView';
 import { Radius, Spacing } from '../utils/theme';
+
+const DEFAULT_STATS = {
+  totalSignals: 0,
+  openSignals: 0,
+  wins: 0,
+  losses: 0,
+  expired: 0,
+  winRate: 0,
+  tp1Wins: 0,
+  tp2Wins: 0,
+  tp3Wins: 0,
+};
 
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -25,8 +37,10 @@ const useDebounce = (value, delay) => {
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [signals, setSignals] = useState([]);
+  const [stats, setStats] = useState(DEFAULT_STATS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [statsError, setStatsError] = useState(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('ALL');
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -36,27 +50,40 @@ export default function HomeScreen({ navigation }) {
   const fetchSignals = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setStatsError(null);
 
     try {
-      const [signalsRes, coinsRes] = await Promise.all([
+      const [signalsRes, coinsRes, statsRes] = await Promise.allSettled([
         SignalService.getAllSignals(),
         SignalService.getCoins(),
+        SignalService.getStats(),
       ]);
 
-      const activeSymbols = new Set((coinsRes.data || []).map((coin) => coin.symbol));
-      const latestSignals = signalsRes.data || [];
+      if (signalsRes.status !== 'fulfilled' || coinsRes.status !== 'fulfilled') {
+        throw (signalsRes.status === 'rejected' ? signalsRes.reason : coinsRes.reason);
+      }
+
+      const activeSymbols = new Set((coinsRes.value.data || []).map((coin) => coin.symbol));
+      const latestSignals = signalsRes.value.data || [];
       const activeSignals = latestSignals.filter((signal) => activeSymbols.has(signal.symbol));
 
       setSignals(activeSignals);
       setLastUpdate(new Date());
+
+      if (statsRes.status === 'fulfilled') {
+        setStats({ ...DEFAULT_STATS, ...(statsRes.value.data || {}) });
+      } else {
+        setStats(DEFAULT_STATS);
+        setStatsError('Performans istatistikleri şu anda alınamıyor.');
+      }
     } catch (e) {
       const msg = e.userMessage || 'Sinyaller yuklenemedi';
       setError(msg);
       setSignals([]);
       Alert.alert('Hata', msg);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, []);
 
   useFocusEffect(
@@ -91,6 +118,61 @@ export default function HomeScreen({ navigation }) {
         title="Crypto Sinyalleri"
         subtitle={lastUpdate ? `Son guncelleme ${formatTimeAgo(lastUpdate)}` : 'Canli coin sinyalleri ve trend ozeti'}
       />
+
+      <View style={styles.performanceCard}>
+        <View style={styles.performanceTopRow}>
+          <View style={styles.performanceHero}>
+            <Text style={styles.performanceLabel}>Win Rate</Text>
+            <Text style={styles.performanceValue}>{formatPercent(stats.winRate)}</Text>
+            <Text style={styles.performanceHint}>Cozulen sinyaller uzerinden hesaplanir</Text>
+          </View>
+
+          <View style={styles.performanceSideGrid}>
+            <View style={styles.metricTile}>
+              <Text style={styles.metricLabel}>Toplam</Text>
+              <Text style={styles.metricValue}>{stats.totalSignals}</Text>
+            </View>
+            <View style={styles.metricTile}>
+              <Text style={styles.metricLabel}>Kazanc</Text>
+              <Text style={[styles.metricValue, styles.metricValueSuccess]}>{stats.wins}</Text>
+            </View>
+            <View style={styles.metricTile}>
+              <Text style={styles.metricLabel}>Kayip</Text>
+              <Text style={[styles.metricValue, styles.metricValueDanger]}>{stats.losses}</Text>
+            </View>
+            <View style={styles.metricTile}>
+              <Text style={styles.metricLabel}>Acik</Text>
+              <Text style={styles.metricValue}>{stats.openSignals}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.performanceFooter}>
+          <View style={styles.performancePill}>
+            <Text style={styles.performancePillLabel}>TP1</Text>
+            <Text style={styles.performancePillValue}>{stats.tp1Wins}</Text>
+          </View>
+          <View style={styles.performancePill}>
+            <Text style={styles.performancePillLabel}>TP2</Text>
+            <Text style={styles.performancePillValue}>{stats.tp2Wins}</Text>
+          </View>
+          <View style={styles.performancePill}>
+            <Text style={styles.performancePillLabel}>TP3</Text>
+            <Text style={styles.performancePillValue}>{stats.tp3Wins}</Text>
+          </View>
+          <View style={styles.performancePill}>
+            <Text style={styles.performancePillLabel}>Expired</Text>
+            <Text style={styles.performancePillValue}>{stats.expired}</Text>
+          </View>
+        </View>
+
+        {statsError ? (
+          <View style={styles.statsBanner}>
+            <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
+            <Text style={styles.statsBannerText}>{statsError}</Text>
+          </View>
+        ) : null}
+      </View>
 
       <View style={styles.summaryRow}>
         <View style={styles.summaryPill}>
@@ -145,7 +227,7 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
     </View>
-  ), [error, fetchSignals, filter, filtered.length, lastUpdate, search, signals.length]);
+  ), [error, fetchSignals, filter, filtered.length, lastUpdate, search, signals.length, stats, statsError]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -202,6 +284,121 @@ const styles = StyleSheet.create({
   },
   listHeader: {
     paddingBottom: Spacing.sm,
+  },
+  performanceCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  performanceTopRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  performanceHero: {
+    flex: 1.1,
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: Radius.md,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: 'space-between',
+  },
+  performanceLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  performanceValue: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginTop: 8,
+  },
+  performanceHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: Colors.textSecondary,
+    marginTop: 8,
+  },
+  performanceSideGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metricTile: {
+    width: '47%',
+    minHeight: 72,
+    backgroundColor: Colors.background,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'space-between',
+  },
+  metricLabel: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  metricValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  metricValueSuccess: {
+    color: Colors.bullish,
+  },
+  metricValueDanger: {
+    color: Colors.bearish,
+  },
+  performanceFooter: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  performancePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  performancePillLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  performancePillValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  statsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceLight,
+  },
+  statsBannerText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: Colors.textSecondary,
   },
   summaryRow: {
     flexDirection: 'row',

@@ -6,6 +6,11 @@ const SignalService = {
     return res.data;
   },
 
+  async getStats() {
+    const res = await api.get('/signals/stats');
+    return res.data;
+  },
+
   async getSignal(symbol) {
     const formatted = symbol.replace('/', '-');
     const res = await api.get('/signals/' + formatted);
