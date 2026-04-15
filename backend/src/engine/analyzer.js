@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 
 class Analyzer {
   static analyze(ohlcv, symbol, timeframe = '1h') {
-    const { opens, highs, lows, closes, volumes } = ohlcv;
+    const { opens, highs, lows, closes, volumes, quoteVolumes, closeTimes } = ohlcv;
     if (!closes || closes.length < 200) { logger.warn(`Yetersiz veri: ${symbol}`); return null; }
 
     const currentPrice = closes[closes.length - 1];
@@ -13,8 +13,39 @@ class Analyzer {
     const ema200Data = Indicators.calculateEMA200Trend(closes);
     const adxData = Indicators.calculateADX(highs, lows, closes, 14);
     const atr = Indicators.calculateATR(highs, lows, closes, 14);
-    const volumeData = Indicators.calculateVolumeAnalysis(volumes, 20);
+    const lastIndex = closes.length - 1;
+    const latestClosedIndex = Array.isArray(closeTimes) && closeTimes.length > 1 && closeTimes[lastIndex] > Date.now()
+      ? lastIndex - 1
+      : lastIndex;
+    const volumeData = Indicators.calculateVolumeAnalysis({
+      closes,
+      volumes,
+      baseVolumes: volumes,
+      quoteVolumes,
+      currentIndex: latestClosedIndex,
+    }, 20);
     const bb = Indicators.calculateBollingerBands(closes, 20, 2);
+    const hasValidVolumeRatio = Number.isFinite(volumeData.ratio) && volumeData.ratio >= 0;
+
+    logger.debug(JSON.stringify({
+      event: 'volume_analysis',
+      symbol,
+      timeframe,
+      exchange: 'binance',
+      source: 'binance-klines',
+      selectedBarIndex: latestClosedIndex,
+      selectedBarType: latestClosedIndex === lastIndex ? 'latest_closed_or_only_bar' : 'previous_closed_bar',
+      selectedBarReason: latestClosedIndex === lastIndex ? 'last kline already closed or close time unavailable' : 'latest kline still open; using previous closed bar',
+      baseVolume: latestClosedIndex >= 0 ? volumes[latestClosedIndex] : null,
+      quoteVolume: latestClosedIndex >= 0 && Array.isArray(quoteVolumes) ? quoteVolumes[latestClosedIndex] : null,
+      closePrice: latestClosedIndex >= 0 ? closes[latestClosedIndex] : null,
+      currentUsdVolume: volumeData.currentUsdVolume,
+      averageUsdVolume: volumeData.averageUsdVolume,
+      volumeRatio: volumeData.ratio,
+      finalVolumeState: volumeData.signal,
+      chosenCurrentVolumeSource: volumeData.currentVolumeSource,
+      historicalVolumeSources: volumeData.historicalSourceBreakdown,
+    }));
 
     let rsiSignal = 'NEUTRAL', rsiScore = 0;
     if (rsi !== null) {
@@ -68,7 +99,7 @@ class Analyzer {
     if (macd.crossover === 'BEARISH' && rsi > 50) bonusScore -= 2;
     if (ema200Data.trend === 'BULLISH' && macdScore > 0 && rsiScore > 0) bonusScore += 2;
     if (ema200Data.trend === 'BEARISH' && macdScore < 0 && rsiScore < 0) bonusScore -= 2;
-    if (volumeData.ratio >= 1.5) { if (buyScore > sellScore) bonusScore += 1; if (sellScore > buyScore) bonusScore -= 1; }
+    if (hasValidVolumeRatio && volumeData.ratio >= 1.5) { if (buyScore > sellScore) bonusScore += 1; if (sellScore > buyScore) bonusScore -= 1; }
     if (adxData.adx >= 30) {
       if (adxData.plusDi > adxData.minusDi && buyScore > sellScore) bonusScore += 1;
       if (adxData.minusDi > adxData.plusDi && sellScore > buyScore) bonusScore -= 1;
@@ -92,13 +123,13 @@ class Analyzer {
       else if (signalType === 'BUY' && rawScore < 6) signalType = 'WEAK_BUY';
       else if (signalType === 'SELL' && rawScore > -6) signalType = 'WEAK_SELL';
     }
-    if (volumeData.ratio !== null && volumeData.ratio < 0.3 && (signalType === 'WEAK_BUY' || signalType === 'WEAK_SELL')) signalType = 'WAIT';
+    if (hasValidVolumeRatio && volumeData.ratio < 0.3 && (signalType === 'WEAK_BUY' || signalType === 'WEAK_SELL')) signalType = 'WAIT';
 
     let confidence = Math.min((Math.abs(rawScore) / 16) * 100, 100);
     if (adxData.adx >= 30) confidence = Math.min(confidence * 1.15, 100);
     else if (adxData.adx < 20) confidence *= 0.8;
-    if (volumeData.ratio >= 1.5) confidence = Math.min(confidence * 1.1, 100);
-    else if (volumeData.ratio < 0.5) confidence *= 0.85;
+    if (hasValidVolumeRatio && volumeData.ratio >= 1.5) confidence = Math.min(confidence * 1.1, 100);
+    else if (hasValidVolumeRatio && volumeData.ratio < 0.5) confidence *= 0.85;
     confidence = Math.round(confidence * 100) / 100;
 
     const risk = RiskManager.calculateLevels(currentPrice, atr, direction, adxData.adx, volumeData.ratio);

@@ -1,4 +1,18 @@
 class Indicators {
+  static isValidNumber(value) {
+    return typeof value === 'number' && Number.isFinite(value);
+  }
+
+  static toUsdVolume(baseVolume, quoteVolume, closePrice) {
+    if (this.isValidNumber(quoteVolume) && quoteVolume >= 0) {
+      return { usdVolume: quoteVolume, source: 'quoteVolume' };
+    }
+    if (this.isValidNumber(baseVolume) && baseVolume >= 0 && this.isValidNumber(closePrice) && closePrice > 0) {
+      return { usdVolume: baseVolume * closePrice, source: 'baseVolume*closePrice' };
+    }
+    return { usdVolume: null, source: 'unavailable' };
+  }
+
   static calculateSMA(data, period) {
     if (data.length < period) return null;
     const slice = data.slice(data.length - period);
@@ -135,19 +149,86 @@ class Indicators {
     };
   }
 
-  static calculateVolumeAnalysis(volumes, period = 20) {
-    if (volumes.length < period) return { ratio: null, signal: 'NEUTRAL' };
-    const current = volumes[volumes.length - 1];
-    const ma = this.calculateSMA(volumes, period);
-    if (!ma) return { ratio: null, signal: 'NEUTRAL' };
-    const ratio = current / ma;
-    let signal = 'NEUTRAL';
-    if (ratio >= 2) signal = 'VERY_HIGH';
+  static calculateVolumeAnalysis(volumeContext, period = 20) {
+    const unknown = {
+      ratio: null,
+      signal: 'UNKNOWN',
+      currentUsdVolume: null,
+      averageUsdVolume: null,
+      currentVolumeSource: 'unavailable',
+      historicalSourceBreakdown: {},
+    };
+
+    if (!volumeContext || !Array.isArray(volumeContext.closes)) return unknown;
+
+    const closes = volumeContext.closes;
+    const baseVolumes = Array.isArray(volumeContext.baseVolumes)
+      ? volumeContext.baseVolumes
+      : Array.isArray(volumeContext.volumes)
+        ? volumeContext.volumes
+        : [];
+    const quoteVolumes = Array.isArray(volumeContext.quoteVolumes) ? volumeContext.quoteVolumes : [];
+    const currentIndex = Number.isInteger(volumeContext.currentIndex) ? volumeContext.currentIndex : closes.length - 1;
+
+    if (currentIndex < 0 || closes.length <= currentIndex || baseVolumes.length <= currentIndex) return unknown;
+    if (currentIndex < period) return unknown;
+
+    const currentVolume = this.toUsdVolume(baseVolumes[currentIndex], quoteVolumes[currentIndex], closes[currentIndex]);
+    if (!this.isValidNumber(currentVolume.usdVolume) || currentVolume.usdVolume < 0) {
+      return { ...unknown, currentVolumeSource: currentVolume.source };
+    }
+
+    const historicalUsdVolumes = [];
+    const historicalSourceBreakdown = {};
+    for (let i = currentIndex - period; i < currentIndex; i++) {
+      const historicalVolume = this.toUsdVolume(baseVolumes[i], quoteVolumes[i], closes[i]);
+      if (!this.isValidNumber(historicalVolume.usdVolume) || historicalVolume.usdVolume < 0) {
+        return {
+          ...unknown,
+          currentUsdVolume: currentVolume.usdVolume,
+          currentVolumeSource: currentVolume.source,
+          historicalSourceBreakdown,
+        };
+      }
+      historicalUsdVolumes.push(historicalVolume.usdVolume);
+      historicalSourceBreakdown[historicalVolume.source] = (historicalSourceBreakdown[historicalVolume.source] || 0) + 1;
+    }
+
+    const averageUsdVolume = this.calculateSMA(historicalUsdVolumes, period);
+    if (!this.isValidNumber(averageUsdVolume) || averageUsdVolume <= 0) {
+      return {
+        ...unknown,
+        currentUsdVolume: currentVolume.usdVolume,
+        currentVolumeSource: currentVolume.source,
+        historicalSourceBreakdown,
+      };
+    }
+
+    const ratio = currentVolume.usdVolume / averageUsdVolume;
+    if (!this.isValidNumber(ratio) || ratio < 0) {
+      return {
+        ...unknown,
+        currentUsdVolume: currentVolume.usdVolume,
+        averageUsdVolume,
+        currentVolumeSource: currentVolume.source,
+        historicalSourceBreakdown,
+      };
+    }
+
+    let signal = 'VERY_LOW';
+    if (ratio >= 2.5) signal = 'EXTREME_HIGH';
     else if (ratio >= 1.5) signal = 'HIGH';
-    else if (ratio >= 1) signal = 'NORMAL';
-    else if (ratio >= 0.5) signal = 'LOW';
-    else signal = 'VERY_LOW';
-    return { ratio: Math.round(ratio * 1e4) / 1e4, signal };
+    else if (ratio >= 0.8) signal = 'NORMAL';
+    else if (ratio >= 0.4) signal = 'LOW';
+
+    return {
+      ratio: Math.round(ratio * 1e4) / 1e4,
+      signal,
+      currentUsdVolume: Math.round(currentVolume.usdVolume * 100) / 100,
+      averageUsdVolume: Math.round(averageUsdVolume * 100) / 100,
+      currentVolumeSource: currentVolume.source,
+      historicalSourceBreakdown,
+    };
   }
 
   static calculateEMA200Trend(closes) {

@@ -79,13 +79,15 @@ class BinanceFetcher {
 
     const s = symbol.replace('/', '');
     const res = await this.client.get('/api/v3/klines', { params: { symbol: s, interval, limit } });
-    const opens = [], highs = [], lows = [], closes = [], volumes = [];
+    const opens = [], highs = [], lows = [], closes = [], volumes = [], quoteVolumes = [], closeTimes = [];
     for (const c of res.data) {
       opens.push(parseFloat(c[1])); highs.push(parseFloat(c[2]));
       lows.push(parseFloat(c[3])); closes.push(parseFloat(c[4]));
       volumes.push(parseFloat(c[5]));
+      quoteVolumes.push(parseFloat(c[7]));
+      closeTimes.push(c[6]);
     }
-    const data = { opens, highs, lows, closes, volumes };
+    const data = { opens, highs, lows, closes, volumes, quoteVolumes, closeTimes };
     this.setCache(cacheKey, data);
     return data;
   }
