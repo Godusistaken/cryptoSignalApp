@@ -131,23 +131,45 @@ class Analyzer {
       else bbSignal = 'MIDDLE';
     }
 
+    const isStrongBullTrend = adxData.adx !== null && adxData.adx >= 25 && ema200Data.trend === 'BULLISH' && adxData.plusDi > adxData.minusDi;
+    const isStrongBearTrend = adxData.adx !== null && adxData.adx >= 25 && ema200Data.trend === 'BEARISH' && adxData.minusDi > adxData.plusDi;
+    const isRangingMarket = adxData.adx !== null && adxData.adx < 20;
+
+    let effectiveRsiScore = rsiScore;
+    let effectiveBbScore = bbScore;
+    let effectiveEma200Score = ema200Score;
+    let effectiveAdxScore = adxScore;
+    let effectiveMacdScore = macdScore;
+
+    if (isStrongBullTrend) {
+      effectiveRsiScore = Math.max(0, effectiveRsiScore);
+      effectiveBbScore = Math.max(0, effectiveBbScore);
+    } else if (isStrongBearTrend) {
+      effectiveRsiScore = Math.min(0, effectiveRsiScore);
+      effectiveBbScore = Math.min(0, effectiveBbScore);
+    } else if (isRangingMarket) {
+      effectiveEma200Score = 0;
+      effectiveAdxScore = 0;
+      effectiveMacdScore = Math.sign(effectiveMacdScore) * Math.min(Math.abs(effectiveMacdScore), 1);
+    }
+
     let buyScore = 0, sellScore = 0;
-    for (const s of [rsiScore, macdScore, ema200Score, adxScore, bbScore]) {
+    for (const s of [effectiveRsiScore, effectiveMacdScore, effectiveEma200Score, effectiveAdxScore, effectiveBbScore]) {
       if (s > 0) buyScore += s; if (s < 0) sellScore += Math.abs(s);
     }
 
     let bonusScore = 0;
     if (macd.crossover === 'BULLISH' && rsi < 50) bonusScore += 2;
     if (macd.crossover === 'BEARISH' && rsi > 50) bonusScore -= 2;
-    if (ema200Data.trend === 'BULLISH' && macdScore > 0 && rsiScore > 0) bonusScore += 2;
-    if (ema200Data.trend === 'BEARISH' && macdScore < 0 && rsiScore < 0) bonusScore -= 2;
+    if (ema200Data.trend === 'BULLISH' && effectiveMacdScore > 0 && effectiveRsiScore > 0) bonusScore += 2;
+    if (ema200Data.trend === 'BEARISH' && effectiveMacdScore < 0 && effectiveRsiScore < 0) bonusScore -= 2;
     if (hasValidVolumeRatio && volumeData.ratio >= 1.5) { if (buyScore > sellScore) bonusScore += 1; if (sellScore > buyScore) bonusScore -= 1; }
     if (adxData.adx >= 30) {
       if (adxData.plusDi > adxData.minusDi && buyScore > sellScore) bonusScore += 1;
       if (adxData.minusDi > adxData.plusDi && sellScore > buyScore) bonusScore -= 1;
     }
-    if (bb.position <= 0.1 && rsi < 35) bonusScore += 2;
-    if (bb.position >= 0.9 && rsi > 65) bonusScore -= 2;
+    if (!isStrongBearTrend && bb.position <= 0.1 && rsi < 35) bonusScore += 2;
+    if (!isStrongBullTrend && bb.position >= 0.9 && rsi > 65) bonusScore -= 2;
 
     const rawScore = buyScore - sellScore + bonusScore;
 
@@ -166,6 +188,21 @@ class Analyzer {
       else if (signalType === 'SELL' && rawScore > -6) signalType = 'WEAK_SELL';
     }
     if (hasValidVolumeRatio && volumeData.ratio < 0.3 && (signalType === 'WEAK_BUY' || signalType === 'WEAK_SELL')) signalType = 'WAIT';
+
+    const isUpperBollingerRegion = bb.position !== null && bb.position >= 0.8;
+    const isLowerBollingerRegion = bb.position !== null && bb.position <= 0.2;
+    const buyVeto = rsi !== null && rsi >= 75 && isUpperBollingerRegion;
+    const sellVeto = rsi !== null && rsi <= 25 && isLowerBollingerRegion;
+    let vetoReason = null;
+    if (buyVeto && direction === 'BUY') {
+      signalType = 'WAIT';
+      direction = 'NEUTRAL';
+      vetoReason = 'BUY_VETO_RSI_OVERBOUGHT_UPPER_BB';
+    } else if (sellVeto && direction === 'SELL') {
+      signalType = 'WAIT';
+      direction = 'NEUTRAL';
+      vetoReason = 'SELL_VETO_RSI_OVERSOLD_LOWER_BB';
+    }
 
     let confidence = Math.min((Math.abs(rawScore) / 16) * 100, 100);
     if (adxData.adx >= 30) confidence = Math.min(confidence * 1.15, 100);
@@ -192,6 +229,7 @@ class Analyzer {
       volumeRatio: volumeData.ratio, volumeSignal: volumeData.signal,
       bbUpper: bb.upper, bbMiddle: bb.middle, bbLower: bb.lower, bbPosition: bb.position, bbSignal,
       buyScore, sellScore, bonusScore, rawScore,
+      vetoReason,
       stopLoss: risk.stopLoss, takeProfit1: risk.takeProfit1, takeProfit2: risk.takeProfit2,
       takeProfit3: risk.takeProfit3, riskRewardRatio: risk.riskRewardRatio,
       analysisNotes: `RSI:${rsiSignal}|MACD:${macd.crossover}|Trend:${ema200Data.trend}|ADX:${adxSignal}|Vol:${volumeData.signal}|BB:${bbSignal}`,
