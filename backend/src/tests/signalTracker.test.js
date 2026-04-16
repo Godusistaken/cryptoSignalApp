@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const SignalTracker = require('../services/signalTracker');
+const fetcher = require('../fetcher/binance');
+const { SignalModel } = require('../database/models');
 const EVALUATION_CANDLE_TIME = Date.parse('2026-04-16T02:00:00.000Z');
 
 function buildSignal(overrides = {}) {
@@ -75,6 +77,7 @@ test('ambiguous candle touching both TP and SL resolves conservatively as LOSS_S
   }));
 
   assert.equal(result.status, 'LOSS_SL');
+  assert.equal(result.ambiguousResolution, true);
 });
 
 test('signal expires after timeframe candle budget is exhausted', () => {
@@ -90,4 +93,43 @@ test('signal expires after timeframe candle budget is exhausted', () => {
   }), expirationTime + 1);
 
   assert.equal(result.status, 'EXPIRED');
+});
+
+test('expired open signals resolve without fetching candles', async () => {
+  const originalGetOpenHistoricalSignals = SignalModel.getOpenHistoricalSignals;
+  const originalUpdateHistoricalSignalStatus = SignalModel.updateHistoricalSignalStatus;
+  const originalGetSignalTrackingStats = SignalModel.getSignalTrackingStats;
+  const originalFetchClosedKlinesSince = fetcher.fetchClosedKlinesSince;
+
+  let updated = null;
+  let fetchCalled = false;
+
+  SignalModel.getOpenHistoricalSignals = () => [buildSignal({
+    id: 99,
+    created_at: '2026-04-16T00:00:00.000Z',
+  })];
+  SignalModel.updateHistoricalSignalStatus = (id, resolution) => {
+    updated = { id, resolution };
+    return 1;
+  };
+  SignalModel.getSignalTrackingStats = () => ({ totalSignals: 1, openSignals: 0, expired: 1 });
+  fetcher.fetchClosedKlinesSince = async () => {
+    fetchCalled = true;
+    throw new Error('fetch should not be called for expired signals');
+  };
+
+  try {
+    const result = await SignalTracker.evaluateOpenSignals();
+
+    assert.equal(fetchCalled, false);
+    assert.equal(updated.id, 99);
+    assert.equal(updated.resolution.status, 'EXPIRED');
+    assert.equal(result.processed, 1);
+    assert.deepEqual(result.results, [{ id: 99, symbol: 'BTC/USDT', status: 'EXPIRED', ambiguousResolution: false }]);
+  } finally {
+    SignalModel.getOpenHistoricalSignals = originalGetOpenHistoricalSignals;
+    SignalModel.updateHistoricalSignalStatus = originalUpdateHistoricalSignalStatus;
+    SignalModel.getSignalTrackingStats = originalGetSignalTrackingStats;
+    fetcher.fetchClosedKlinesSince = originalFetchClosedKlinesSince;
+  }
 });

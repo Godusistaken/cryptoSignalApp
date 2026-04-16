@@ -59,11 +59,12 @@ class SignalTracker {
     return createdAtMs + (this.getExpirationCandles(signal.timeframe) * timeframeMs);
   }
 
-  static normalizeResolution({ status = 'OPEN', resolvedCandleTime = null, lastCheckedCandleTime = null } = {}) {
+  static normalizeResolution({ status = 'OPEN', resolvedCandleTime = null, lastCheckedCandleTime = null, ambiguousResolution = false } = {}) {
     return {
       status,
       resolvedAt: status === 'OPEN' ? null : new Date(resolvedCandleTime || Date.now()).toISOString(),
       lastCheckedCandleTime,
+      ambiguousResolution,
     };
   }
 
@@ -100,7 +101,7 @@ class SignalTracker {
 
         // Conservative ambiguity rule: if the same closed candle touches both SL and any TP, count it as LOSS_SL.
         if (hitStop && (hitTp1 || hitTp2 || hitTp3)) {
-          return this.normalizeResolution({ status: 'LOSS_SL', resolvedCandleTime: candleCloseTime, lastCheckedCandleTime: candleCloseTime });
+          return this.normalizeResolution({ status: 'LOSS_SL', resolvedCandleTime: candleCloseTime, lastCheckedCandleTime: candleCloseTime, ambiguousResolution: true });
         }
         if (hitStop) {
           return this.normalizeResolution({ status: 'LOSS_SL', resolvedCandleTime: candleCloseTime, lastCheckedCandleTime: candleCloseTime });
@@ -124,7 +125,7 @@ class SignalTracker {
 
         // Conservative ambiguity rule: if the same closed candle touches both SL and any TP, count it as LOSS_SL.
         if (hitStop && (hitTp1 || hitTp2 || hitTp3)) {
-          return this.normalizeResolution({ status: 'LOSS_SL', resolvedCandleTime: candleCloseTime, lastCheckedCandleTime: candleCloseTime });
+          return this.normalizeResolution({ status: 'LOSS_SL', resolvedCandleTime: candleCloseTime, lastCheckedCandleTime: candleCloseTime, ambiguousResolution: true });
         }
         if (hitStop) {
           return this.normalizeResolution({ status: 'LOSS_SL', resolvedCandleTime: candleCloseTime, lastCheckedCandleTime: candleCloseTime });
@@ -153,12 +154,20 @@ class SignalTracker {
     return this.normalizeResolution({ status: 'OPEN', lastCheckedCandleTime: latestCheckedCandleTime });
   }
 
-  async evaluateOpenSignals() {
+  static async evaluateOpenSignals() {
     const openSignals = SignalModel.getOpenHistoricalSignals();
     const results = [];
 
     for (const signal of openSignals) {
       try {
+        const expirationTime = SignalTracker.getExpirationTime(signal);
+        if (expirationTime !== null && Date.now() >= expirationTime) {
+          const resolution = SignalTracker.evaluateSignalAgainstCandles(signal, { highs: [], lows: [], closeTimes: [] });
+          SignalModel.updateHistoricalSignalStatus(signal.id, resolution);
+          results.push({ id: signal.id, symbol: signal.symbol, status: resolution.status, ambiguousResolution: resolution.ambiguousResolution });
+          continue;
+        }
+
         const candles = await fetcher.fetchClosedKlinesSince(signal.symbol, signal.timeframe, {
           startTime: SignalTracker.getFetchStartTime(signal),
           limit: 1000,
@@ -176,7 +185,7 @@ class SignalTracker {
           SignalModel.updateHistoricalSignalStatus(signal.id, resolution);
         }
 
-        results.push({ id: signal.id, symbol: signal.symbol, status: resolution.status });
+        results.push({ id: signal.id, symbol: signal.symbol, status: resolution.status, ambiguousResolution: resolution.ambiguousResolution });
       } catch (error) {
         logger.error(`Signal tracker hata (${signal.symbol}#${signal.id}): ${error.message}`);
       }
