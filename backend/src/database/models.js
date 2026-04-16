@@ -97,6 +97,37 @@ function getWinRatesByColumn(columnName, { excludeNull = false } = {}) {
   `).all());
 }
 
+function getExpiredCountsByColumn(columnName, { excludeNull = false } = {}) {
+  const nullFilter = excludeNull ? `AND ${columnName} IS NOT NULL` : '';
+  return rowsToCounts(db.prepare(`
+    SELECT COALESCE(${columnName}, 'UNKNOWN') AS name, COUNT(*) AS count
+    FROM signal_history
+    WHERE ${buildTrackableHistoryWhereClause()}
+      AND status = 'EXPIRED'
+      ${nullFilter}
+    GROUP BY COALESCE(${columnName}, 'UNKNOWN')
+    ORDER BY count DESC, name ASC
+  `).all());
+}
+
+function getExpiredCountsBySignalTypeAndRegime() {
+  const rows = db.prepare(`
+    SELECT signal_type AS signalType, market_regime AS marketRegime, COUNT(*) AS count
+    FROM signal_history
+    WHERE ${buildTrackableHistoryWhereClause()}
+      AND status = 'EXPIRED'
+      AND market_regime IS NOT NULL
+    GROUP BY signal_type, market_regime
+    ORDER BY signal_type ASC, market_regime ASC
+  `).all();
+
+  return rows.reduce((acc, row) => {
+    if (!acc[row.signalType]) acc[row.signalType] = {};
+    acc[row.signalType][row.marketRegime] = row.count || 0;
+    return acc;
+  }, {});
+}
+
 function getAnalyzerCountsByExpression(expression, extraWhere = '') {
   return rowsToCounts(db.prepare(`
     SELECT ${expression} AS name, COUNT(*) AS count
@@ -245,6 +276,13 @@ const SignalModel = {
     const measuredRows = coverage.measuredRows || 0;
     const legacyRows = totalSignals - measuredRows;
     const metadataCoveragePercent = totalSignals > 0 ? Math.round((measuredRows / totalSignals) * 10000) / 100 : 0;
+    const expiredWithoutMarketRegime = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM signal_history
+      WHERE ${buildTrackableHistoryWhereClause()}
+        AND status = 'EXPIRED'
+        AND market_regime IS NULL
+    `).get()?.count || 0;
     const resolvedForRate = wins + losses;
     const winRate = resolvedForRate > 0 ? Math.round((wins / resolvedForRate) * 10000) / 100 : 0;
 
@@ -273,6 +311,10 @@ const SignalModel = {
       vetoReasonCounts: getCountsByColumn('veto_reason', { excludeNull: true }),
       winRateBySignalType: getWinRatesByColumn('signal_type'),
       winRateByMarketRegime: getWinRatesByColumn('market_regime', { excludeNull: true }),
+      expiredCountsBySignalType: getExpiredCountsByColumn('signal_type'),
+      expiredCountsByMarketRegime: getExpiredCountsByColumn('market_regime', { excludeNull: true }),
+      expiredCountsBySignalTypeAndRegime: getExpiredCountsBySignalTypeAndRegime(),
+      expiredWithoutMarketRegime,
     };
   },
 

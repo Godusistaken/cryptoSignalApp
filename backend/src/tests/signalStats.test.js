@@ -145,6 +145,48 @@ test('tracking stats include metadata breakdowns, win rates, and ambiguity count
   assert.equal(stats.ambiguousResolutions - baseline.ambiguousResolutions, 1);
 });
 
+test('tracking stats include expired breakdowns by signal type and market regime', () => {
+  const baseline = SignalModel.getSignalTrackingStats();
+
+  SignalModel.addToHistory(buildHistory({
+    signalType: 'TEST_EXPIRED_BUY',
+    direction: 'BUY',
+    status: 'EXPIRED',
+    marketRegime: 'RANGE',
+    rawScore: 5,
+  }));
+  SignalModel.addToHistory(buildHistory({
+    signalType: 'TEST_EXPIRED_BUY',
+    direction: 'BUY',
+    status: 'EXPIRED',
+    marketRegime: 'STRONG_BULL',
+    rawScore: 6,
+  }));
+  SignalModel.addToHistory(buildHistory({
+    signalType: 'TEST_EXPIRED_SELL',
+    direction: 'SELL',
+    status: 'EXPIRED',
+    marketRegime: null,
+    rawScore: null,
+    stopLoss: 110,
+    takeProfit1: 90,
+    takeProfit2: 80,
+    takeProfit3: 70,
+  }));
+
+  const stats = SignalModel.getSignalTrackingStats();
+
+  assert.equal(stats.expiredCountsBySignalType.TEST_EXPIRED_BUY - (baseline.expiredCountsBySignalType.TEST_EXPIRED_BUY || 0), 2);
+  assert.equal(stats.expiredCountsBySignalType.TEST_EXPIRED_SELL - (baseline.expiredCountsBySignalType.TEST_EXPIRED_SELL || 0), 1);
+  assert.equal(stats.expiredCountsByMarketRegime.RANGE - (baseline.expiredCountsByMarketRegime.RANGE || 0), 1);
+  assert.equal(stats.expiredCountsByMarketRegime.STRONG_BULL - (baseline.expiredCountsByMarketRegime.STRONG_BULL || 0), 1);
+  assert.equal(stats.expiredCountsByMarketRegime.UNKNOWN, undefined);
+  assert.equal(stats.expiredCountsBySignalTypeAndRegime.TEST_EXPIRED_BUY.RANGE - (baseline.expiredCountsBySignalTypeAndRegime.TEST_EXPIRED_BUY?.RANGE || 0), 1);
+  assert.equal(stats.expiredCountsBySignalTypeAndRegime.TEST_EXPIRED_BUY.STRONG_BULL - (baseline.expiredCountsBySignalTypeAndRegime.TEST_EXPIRED_BUY?.STRONG_BULL || 0), 1);
+  assert.equal(stats.expiredCountsBySignalTypeAndRegime.TEST_EXPIRED_SELL, undefined);
+  assert.equal(stats.expiredWithoutMarketRegime - baseline.expiredWithoutMarketRegime, 1);
+});
+
 test('analyzer behavior stats count measured WAIT and veto rows without trackable filtering', () => {
   const baseline = SignalModel.getAnalyzerBehaviorStats();
 
