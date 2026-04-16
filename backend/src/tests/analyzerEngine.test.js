@@ -74,6 +74,7 @@ test('BUY veto turns overbought upper-band BUY setup into WAIT with veto reason'
   assert.equal(result.signalType, 'WAIT');
   assert.equal(result.stopLoss, null);
   assert.equal(result.vetoReason, 'BUY_VETO_RSI_OVERBOUGHT_UPPER_BB');
+  assert.equal(result.marketRegime, 'STRONG_BULL');
 });
 
 test('SELL veto turns oversold lower-band SELL setup into WAIT with veto reason', () => {
@@ -90,6 +91,7 @@ test('SELL veto turns oversold lower-band SELL setup into WAIT with veto reason'
   assert.equal(result.signalType, 'WAIT');
   assert.equal(result.stopLoss, null);
   assert.equal(result.vetoReason, 'SELL_VETO_RSI_OVERSOLD_LOWER_BB');
+  assert.equal(result.marketRegime, 'STRONG_BEAR');
 });
 
 test('ranging market caps MACD influence compared with aligned strong-trend regime', () => {
@@ -115,6 +117,8 @@ test('ranging market caps MACD influence compared with aligned strong-trend regi
 
   assert.ok(rangingResult.rawScore < trendResult.rawScore);
   assert.ok(rangingResult.buyScore < trendResult.buyScore);
+  assert.equal(rangingResult.marketRegime, 'RANGE');
+  assert.equal(trendResult.marketRegime, 'STRONG_BULL');
   assert.notEqual(rangingResult.signalType, 'STRONG_BUY');
   assert.equal(trendResult.signalType, 'STRONG_BUY');
 });
@@ -134,6 +138,7 @@ test('strong bull trend suppresses contradictory RSI and Bollinger mean-reversio
   assert.equal(result.bbSignal, 'NEAR_UPPER');
   assert.equal(result.sellScore, 0);
   assert.equal(result.vetoReason, null);
+  assert.equal(result.marketRegime, 'STRONG_BULL');
   assert.match(result.signalType, /BUY/);
 });
 

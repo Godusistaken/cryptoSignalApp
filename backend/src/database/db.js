@@ -66,6 +66,8 @@ db.exec(`
     sell_score INTEGER DEFAULT 0,
     bonus_score INTEGER DEFAULT 0,
     raw_score INTEGER DEFAULT 0,
+    veto_reason TEXT,
+    market_regime TEXT,
     stop_loss REAL,
     take_profit_1 REAL,
     take_profit_2 REAL,
@@ -97,10 +99,14 @@ db.exec(`
     buy_score INTEGER,
     sell_score INTEGER,
     bonus_score INTEGER,
+    raw_score INTEGER,
+    veto_reason TEXT,
+    market_regime TEXT,
     direction TEXT,
     entry_price REAL,
     status TEXT DEFAULT 'OPEN',
     resolved_at TEXT,
+    ambiguous_resolution INTEGER DEFAULT 0,
     last_checked_candle_time INTEGER,
     created_at TEXT DEFAULT (datetime('now'))
   );
@@ -123,7 +129,13 @@ ensureColumn('signal_history', 'direction', 'TEXT');
 ensureColumn('signal_history', 'entry_price', 'REAL');
 ensureColumn('signal_history', 'status', "TEXT DEFAULT 'OPEN'");
 ensureColumn('signal_history', 'resolved_at', 'TEXT');
+ensureColumn('signal_history', 'raw_score', 'INTEGER');
+ensureColumn('signal_history', 'veto_reason', 'TEXT');
+ensureColumn('signal_history', 'market_regime', 'TEXT');
+ensureColumn('signal_history', 'ambiguous_resolution', 'INTEGER DEFAULT 0');
 ensureColumn('signal_history', 'last_checked_candle_time', 'INTEGER');
+ensureColumn('signals', 'veto_reason', 'TEXT');
+ensureColumn('signals', 'market_regime', 'TEXT');
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_history_status ON signal_history(status);

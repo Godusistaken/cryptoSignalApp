@@ -105,6 +105,17 @@ export default function HomeScreen({ navigation }) {
 
   const filters = ['ALL', 'BUY', 'SELL', 'WAIT'];
   const isFiltered = search.length > 0 || filter !== 'ALL';
+  const displayStats = useMemo(() => ({
+    totalSignals: stats.totalSignals ?? 0,
+    openSignals: stats.openSignals ?? 0,
+    wins: stats.wins ?? 0,
+    losses: stats.losses ?? 0,
+    expired: stats.expired ?? 0,
+    winRate: stats.winRate ?? 0,
+    tp1Wins: stats.tp1Wins ?? 0,
+    tp2Wins: stats.tp2Wins ?? 0,
+    tp3Wins: stats.tp3Wins ?? 0,
+  }), [stats]);
 
   const renderItem = useCallback(({ item }) => (
     <SignalCard signal={item} onPress={(s) => navigation.navigate('Detail', { signal: s, symbol: s.symbol })} />
@@ -123,26 +134,26 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.performanceTopRow}>
           <View style={styles.performanceHero}>
             <Text style={styles.performanceLabel}>Win Rate</Text>
-            <Text style={styles.performanceValue}>{formatPercent(stats.winRate)}</Text>
+            <Text style={styles.performanceValue}>{formatPercent(displayStats.winRate)}</Text>
             <Text style={styles.performanceHint}>Cozulen sinyaller uzerinden hesaplanir</Text>
           </View>
 
           <View style={styles.performanceSideGrid}>
             <View style={styles.metricTile}>
               <Text style={styles.metricLabel}>Toplam</Text>
-              <Text style={styles.metricValue}>{stats.totalSignals}</Text>
+              <Text style={styles.metricValue}>{displayStats.totalSignals}</Text>
             </View>
             <View style={styles.metricTile}>
               <Text style={styles.metricLabel}>Kazanc</Text>
-              <Text style={[styles.metricValue, styles.metricValueSuccess]}>{stats.wins}</Text>
+              <Text style={[styles.metricValue, styles.metricValueSuccess]}>{displayStats.wins}</Text>
             </View>
             <View style={styles.metricTile}>
               <Text style={styles.metricLabel}>Kayip</Text>
-              <Text style={[styles.metricValue, styles.metricValueDanger]}>{stats.losses}</Text>
+              <Text style={[styles.metricValue, styles.metricValueDanger]}>{displayStats.losses}</Text>
             </View>
             <View style={styles.metricTile}>
               <Text style={styles.metricLabel}>Acik</Text>
-              <Text style={styles.metricValue}>{stats.openSignals}</Text>
+              <Text style={styles.metricValue}>{displayStats.openSignals}</Text>
             </View>
           </View>
         </View>
@@ -150,19 +161,19 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.performanceFooter}>
           <View style={styles.performancePill}>
             <Text style={styles.performancePillLabel}>TP1</Text>
-            <Text style={styles.performancePillValue}>{stats.tp1Wins}</Text>
+            <Text style={styles.performancePillValue}>{displayStats.tp1Wins}</Text>
           </View>
           <View style={styles.performancePill}>
             <Text style={styles.performancePillLabel}>TP2</Text>
-            <Text style={styles.performancePillValue}>{stats.tp2Wins}</Text>
+            <Text style={styles.performancePillValue}>{displayStats.tp2Wins}</Text>
           </View>
           <View style={styles.performancePill}>
             <Text style={styles.performancePillLabel}>TP3</Text>
-            <Text style={styles.performancePillValue}>{stats.tp3Wins}</Text>
+            <Text style={styles.performancePillValue}>{displayStats.tp3Wins}</Text>
           </View>
           <View style={styles.performancePill}>
             <Text style={styles.performancePillLabel}>Expired</Text>
-            <Text style={styles.performancePillValue}>{stats.expired}</Text>
+            <Text style={styles.performancePillValue}>{displayStats.expired}</Text>
           </View>
         </View>
 
@@ -227,7 +238,7 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
     </View>
-  ), [error, fetchSignals, filter, filtered.length, lastUpdate, search, signals.length, stats, statsError]);
+  ), [displayStats, error, fetchSignals, filter, filtered.length, lastUpdate, search, signals.length, statsError]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

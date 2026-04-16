@@ -28,6 +28,7 @@ class SignalService {
           stopLoss: analysis.stopLoss, takeProfit1: analysis.takeProfit1,
           takeProfit2: analysis.takeProfit2, takeProfit3: analysis.takeProfit3,
           buyScore: analysis.buyScore, sellScore: analysis.sellScore, bonusScore: analysis.bonusScore,
+          rawScore: analysis.rawScore, vetoReason: analysis.vetoReason, marketRegime: analysis.marketRegime,
         });
         SignalModel.deleteOldSignals(symbol, 5);
         results.push(analysis);
@@ -53,6 +54,7 @@ class SignalService {
         stopLoss: analysis.stopLoss, takeProfit1: analysis.takeProfit1,
         takeProfit2: analysis.takeProfit2, takeProfit3: analysis.takeProfit3,
         buyScore: analysis.buyScore, sellScore: analysis.sellScore, bonusScore: analysis.bonusScore,
+        rawScore: analysis.rawScore, vetoReason: analysis.vetoReason, marketRegime: analysis.marketRegime,
       });
     }
     return analysis;

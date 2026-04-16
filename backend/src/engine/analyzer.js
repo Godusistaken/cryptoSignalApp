@@ -134,6 +134,7 @@ class Analyzer {
     const isStrongBullTrend = adxData.adx !== null && adxData.adx >= 25 && ema200Data.trend === 'BULLISH' && adxData.plusDi > adxData.minusDi;
     const isStrongBearTrend = adxData.adx !== null && adxData.adx >= 25 && ema200Data.trend === 'BEARISH' && adxData.minusDi > adxData.plusDi;
     const isRangingMarket = adxData.adx !== null && adxData.adx < 20;
+    const marketRegime = isStrongBullTrend ? 'STRONG_BULL' : isStrongBearTrend ? 'STRONG_BEAR' : isRangingMarket ? 'RANGE' : 'NEUTRAL';
 
     let effectiveRsiScore = rsiScore;
     let effectiveBbScore = bbScore;
@@ -230,6 +231,7 @@ class Analyzer {
       bbUpper: bb.upper, bbMiddle: bb.middle, bbLower: bb.lower, bbPosition: bb.position, bbSignal,
       buyScore, sellScore, bonusScore, rawScore,
       vetoReason,
+      marketRegime,
       stopLoss: risk.stopLoss, takeProfit1: risk.takeProfit1, takeProfit2: risk.takeProfit2,
       takeProfit3: risk.takeProfit3, riskRewardRatio: risk.riskRewardRatio,
       analysisNotes: `RSI:${rsiSignal}|MACD:${macd.crossover}|Trend:${ema200Data.trend}|ADX:${adxSignal}|Vol:${volumeData.signal}|BB:${bbSignal}`,

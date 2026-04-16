@@ -13,6 +13,15 @@ router.get('/stats', (req, res, next) => {
   }
 });
 
+router.get('/analyzer-stats', (req, res, next) => {
+  try {
+    const stats = SignalModel.getAnalyzerBehaviorStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/open', (req, res, next) => {
   try {
     const openSignals = SignalModel.getOpenHistoricalSignals();
