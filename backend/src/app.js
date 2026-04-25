@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const config = require('./config');
 const logger = require('./utils/logger');
 const errorHandler = require('./api/middleware/errorHandler');
+const auth = require('./api/middleware/auth');
 const scheduler = require('./scheduler/cron');
 
 // Veritabanini baslat
@@ -16,12 +17,35 @@ const coinRoutes = require('./api/routes/coins');
 const aiRoutes = require('./api/routes/ai');
 
 const app = express();
+app.set('etag', false);
 
 // Security middleware
 app.use(helmet());
-app.use(cors());
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:19000', 'http://localhost:8081'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+}));
 app.use(compression());
 app.use(express.json({ limit: '10kb' }));
+
+app.use('/api', (req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+    'Surrogate-Control': 'no-store',
+  });
+  next();
+});
 
 // Rate limiting - DDoS koruması
 const limiter = rateLimit({
@@ -41,6 +65,13 @@ const analyzeLimiter = rateLimit({
 });
 app.use('/api/signals/analyze', analyzeLimiter);
 app.use('/api/signals/run-cycle', analyzeLimiter);
+
+const aiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 10,
+  message: { success: false, error: { message: 'AI istek limiti asildi, 1 dk bekle.' } },
+});
+app.use('/api/ai', aiLimiter);
 
 app.get('/api/health', (req, res) => {
   // DB health check
@@ -62,9 +93,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.use('/api/signals', signalRoutes);
-app.use('/api/coins', coinRoutes);
-app.use('/api/ai', aiRoutes);
+app.use('/api/signals', auth, signalRoutes);
+app.use('/api/coins', auth, coinRoutes);
+app.use('/api/ai', auth, aiRoutes);
 app.use(errorHandler);
 
 const server = app.listen(config.port, () => {

@@ -141,6 +141,7 @@ function getAnalyzerCountsByExpression(expression, extraWhere = '') {
 
 const SignalModel = {
   upsertSignal(d) {
+    const analyzedAt = d.analyzedAt || new Date().toISOString();
     const stmt = db.prepare(`
       INSERT INTO signals (
         symbol, timeframe, signal_type, confidence,
@@ -153,11 +154,11 @@ const SignalModel = {
         trend_1h, trend_4h, trend_alignment,
         buy_score, sell_score, bonus_score, raw_score, veto_reason, market_regime,
         stop_loss, take_profit_1, take_profit_2, take_profit_3, risk_reward_ratio,
-        analysis_notes
+        analysis_notes, analyzed_at, candle_timestamp
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?
       )
     `);
 
@@ -172,10 +173,10 @@ const SignalModel = {
       d.trend1h, d.trend4h, d.trendAlignment,
       d.buyScore, d.sellScore, d.bonusScore, d.rawScore, d.vetoReason || null, d.marketRegime || null,
       d.stopLoss, d.takeProfit1, d.takeProfit2, d.takeProfit3, d.riskRewardRatio,
-      d.analysisNotes
+      d.analysisNotes, analyzedAt, d.confirmedCandleCloseTime || null
     );
 
-    return { id: result.lastInsertRowid, ...d };
+    return { id: result.lastInsertRowid, ...d, analyzedAt, candleTimestamp: d.confirmedCandleCloseTime || null };
   },
 
   addToHistory(d) {
@@ -375,14 +376,29 @@ const SignalModel = {
 
   getLatestSignals() {
     return db.prepare(`
-      SELECT * FROM signals
-      WHERE id IN (SELECT MAX(id) FROM signals GROUP BY symbol)
-      ORDER BY created_at DESC
+      SELECT
+        s.*,
+        COALESCE(s.analyzed_at, s.created_at) AS analyzedAt,
+        s.candle_timestamp AS candleTimestamp
+      FROM signals s
+      INNER JOIN coins c ON c.symbol = s.symbol AND c.is_active = 1
+      WHERE s.id IN (SELECT MAX(id) FROM signals GROUP BY symbol)
+      ORDER BY COALESCE(s.analyzed_at, s.created_at) DESC
     `).all();
   },
 
   getSignalBySymbol(symbol) {
-    return db.prepare('SELECT * FROM signals WHERE symbol = ? ORDER BY created_at DESC LIMIT 1').get(symbol);
+    return db.prepare(`
+      SELECT
+        s.*,
+        COALESCE(s.analyzed_at, s.created_at) AS analyzedAt,
+        s.candle_timestamp AS candleTimestamp
+      FROM signals s
+      INNER JOIN coins c ON c.symbol = s.symbol AND c.is_active = 1
+      WHERE s.symbol = ?
+      ORDER BY COALESCE(s.analyzed_at, s.created_at) DESC
+      LIMIT 1
+    `).get(symbol);
   },
 
   getSignalHistoryBySymbol(symbol, limit = 100) {

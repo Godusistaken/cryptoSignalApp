@@ -74,6 +74,8 @@ db.exec(`
     take_profit_3 REAL,
     risk_reward_ratio REAL,
     analysis_notes TEXT,
+    analyzed_at TEXT,
+    candle_timestamp INTEGER,
     created_at TEXT DEFAULT (datetime('now'))
   );
 
@@ -136,6 +138,8 @@ ensureColumn('signal_history', 'ambiguous_resolution', 'INTEGER DEFAULT 0');
 ensureColumn('signal_history', 'last_checked_candle_time', 'INTEGER');
 ensureColumn('signals', 'veto_reason', 'TEXT');
 ensureColumn('signals', 'market_regime', 'TEXT');
+ensureColumn('signals', 'analyzed_at', 'TEXT');
+ensureColumn('signals', 'candle_timestamp', 'INTEGER');
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_history_status ON signal_history(status);

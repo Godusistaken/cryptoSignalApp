@@ -35,3 +35,12 @@ data/
 # Expo (for mobile)
 .expo/
 .expo-shared/
+
+# Local env files
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+node_modules/
+**/node_modules/

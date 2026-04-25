@@ -4,10 +4,14 @@ const db = require('../database/db');
 const { SignalModel } = require('../database/models');
 
 const TEST_SYMBOL = 'TEST_STATS/USDT';
+const TEST_ACTIVE_SYMBOL = 'TEST_ACTIVE_FILTER/USDT';
 
 function cleanup() {
   db.prepare('DELETE FROM signal_history WHERE symbol = ?').run(TEST_SYMBOL);
   db.prepare('DELETE FROM signals WHERE symbol = ?').run(TEST_SYMBOL);
+  db.prepare('DELETE FROM signal_history WHERE symbol = ?').run(TEST_ACTIVE_SYMBOL);
+  db.prepare('DELETE FROM signals WHERE symbol = ?').run(TEST_ACTIVE_SYMBOL);
+  db.prepare('DELETE FROM coins WHERE symbol = ?').run(TEST_ACTIVE_SYMBOL);
 }
 
 function buildHistory(overrides = {}) {
@@ -83,6 +87,33 @@ test('stored signal rows include analysis metadata', () => {
     market_regime: 'STRONG_BULL',
   });
   assert.deepEqual(historyRow, signalRow);
+});
+
+test('latest signal queries only include active tracked coins and expose analysis timestamps', () => {
+  db.prepare('INSERT INTO coins (symbol, name, is_active) VALUES (?, ?, 1)').run(TEST_ACTIVE_SYMBOL, 'Test Active Filter');
+
+  const saved = SignalModel.upsertSignal({
+    symbol: TEST_ACTIVE_SYMBOL,
+    timeframe: '1h',
+    signalType: 'BUY',
+    confidence: 61,
+    currentPrice: 100,
+    analyzedAt: '2026-04-25T00:58:00.000Z',
+    confirmedCandleCloseTime: Date.parse('2026-04-25T00:00:00.000Z'),
+  });
+
+  const activeSignals = SignalModel.getLatestSignals();
+  const activeSignal = activeSignals.find(signal => signal.symbol === TEST_ACTIVE_SYMBOL);
+
+  assert.equal(activeSignal.id, saved.id);
+  assert.equal(activeSignal.analyzedAt, '2026-04-25T00:58:00.000Z');
+  assert.equal(activeSignal.candleTimestamp, Date.parse('2026-04-25T00:00:00.000Z'));
+  assert.equal(SignalModel.getSignalBySymbol(TEST_ACTIVE_SYMBOL).id, saved.id);
+
+  SignalModel.deactivateCoin(TEST_ACTIVE_SYMBOL);
+
+  assert.equal(SignalModel.getLatestSignals().some(signal => signal.symbol === TEST_ACTIVE_SYMBOL), false);
+  assert.equal(SignalModel.getSignalBySymbol(TEST_ACTIVE_SYMBOL), undefined);
 });
 
 test('tracking stats include metadata breakdowns, win rates, and ambiguity counts', () => {

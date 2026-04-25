@@ -83,6 +83,11 @@ router.get('/:symbol', (req, res, next) => {
 router.post('/analyze/:symbol', async (req, res, next) => {
   try {
     const symbol = req.params.symbol.toUpperCase().replace(/-/g, '/');
+    const coin = SignalModel.getCoinBySymbol(symbol);
+    if (!coin || coin.is_active === 0) {
+      return res.status(404).json({ success: false, error: { message: 'Bu coin takip listesinde degil' } });
+    }
+
     const result = await signalService.analyzeSingle(symbol);
     if (!result) return res.status(500).json({ success: false, error: { message: 'Analiz basarisiz' } });
     res.json({ success: true, data: result });

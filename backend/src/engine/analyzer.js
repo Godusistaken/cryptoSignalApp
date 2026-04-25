@@ -154,10 +154,15 @@ class Analyzer {
       effectiveMacdScore = Math.sign(effectiveMacdScore) * Math.min(Math.abs(effectiveMacdScore), 1);
     }
 
-    let buyScore = 0, sellScore = 0;
-    for (const s of [effectiveRsiScore, effectiveMacdScore, effectiveEma200Score, effectiveAdxScore, effectiveBbScore]) {
-      if (s > 0) buyScore += s; if (s < 0) sellScore += Math.abs(s);
-    }
+    const scores = [
+      effectiveRsiScore,
+      effectiveMacdScore,
+      effectiveEma200Score,
+      effectiveAdxScore,
+      effectiveBbScore,
+    ];
+    const buyScore = scores.filter(s => s > 0).reduce((a, b) => a + b, 0);
+    const sellScore = Math.abs(scores.filter(s => s < 0).reduce((a, b) => a + b, 0));
 
     let bonusScore = 0;
     if (macd.crossover === 'BULLISH' && rsi < 50) bonusScore += 2;
@@ -172,7 +177,7 @@ class Analyzer {
     if (!isStrongBearTrend && bb.position <= 0.1 && rsi < 35) bonusScore += 2;
     if (!isStrongBullTrend && bb.position >= 0.9 && rsi > 65) bonusScore -= 2;
 
-    const rawScore = buyScore - sellScore + bonusScore;
+    const rawScore = scores.reduce((sum, s) => sum + s, 0) + bonusScore;
 
     let signalType = 'WAIT', direction = 'NEUTRAL';
     if (rawScore >= 8) { signalType = 'STRONG_BUY'; direction = 'BUY'; }

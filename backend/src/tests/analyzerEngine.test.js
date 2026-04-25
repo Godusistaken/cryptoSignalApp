@@ -142,14 +142,14 @@ test('strong bull trend suppresses contradictory RSI and Bollinger mean-reversio
   assert.match(result.signalType, /BUY/);
 });
 
-test('RiskManager keeps high-ADX BUY stop at least 1.5 ATR away and raises targets', () => {
+test('RiskManager tightens high-ADX BUY stop to 1.2 ATR and raises targets', () => {
   const result = RiskManager.calculateLevels(100, 10, 'BUY', 40, 1);
 
-  assert.equal(result.stopLoss, 85);
+  assert.equal(result.stopLoss, 88);
   assert.equal(result.takeProfit1, 118);
   assert.equal(result.takeProfit2, 130);
   assert.equal(result.takeProfit3, 148);
-  assert.equal(result.riskRewardRatio, 1.2);
+  assert.equal(result.riskRewardRatio, 1.5);
 });
 
 test('RiskManager keeps high-ADX SELL stop at least 1.5 ATR away and raises targets', () => {

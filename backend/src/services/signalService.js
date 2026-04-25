@@ -17,6 +17,7 @@ class SignalService {
         const analysis = Analyzer.analyzeMultiTimeframe(d.data1h, d.data4h, symbol);
         if (!analysis) continue;
 
+        analysis.analyzedAt = new Date().toISOString();
         const saved = SignalModel.upsertSignal(analysis);
         SignalModel.addToHistory({
           signalId: saved.id, symbol: analysis.symbol, timeframe: analysis.timeframe,
@@ -43,9 +44,10 @@ class SignalService {
     const d = await fetcher.fetchMultiTimeframe(symbol);
     const analysis = Analyzer.analyzeMultiTimeframe(d.data1h, d.data4h, symbol);
     if (analysis) {
-      SignalModel.upsertSignal(analysis);
+      analysis.analyzedAt = new Date().toISOString();
+      const saved = SignalModel.upsertSignal(analysis);
       SignalModel.addToHistory({
-        signalId: null, symbol: analysis.symbol, timeframe: analysis.timeframe,
+        signalId: saved.id, symbol: analysis.symbol, timeframe: analysis.timeframe,
         signalType: analysis.signalType, confidence: analysis.confidence, currentPrice: analysis.currentPrice,
         direction: analysis.direction, entryPrice: analysis.currentPrice,
         rsi: analysis.rsi, macdHistogram: analysis.macdHistogram, adx: analysis.adx,

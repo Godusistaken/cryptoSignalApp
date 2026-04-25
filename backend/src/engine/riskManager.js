@@ -4,11 +4,11 @@ class RiskManager {
       return { stopLoss: null, takeProfit1: null, takeProfit2: null, takeProfit3: null, riskRewardRatio: null };
     }
     let slMult = 1.5;
-    if (adx >= 40) slMult = 1.5;
+    if (adx >= 40) slMult = 1.2;
     else if (adx >= 30) slMult = 1.5;
-    else if (adx >= 25) slMult = 1.5;
-    else if (adx >= 20) slMult = 1.8;
-    else slMult = 2.0;
+    else if (adx >= 25) slMult = 1.8;
+    else if (adx >= 20) slMult = 2.0;
+    else slMult = 2.5;
 
     let tp1 = 1.5, tp2 = 2.5, tp3 = 4.0;
     if (volRatio >= 2) { tp1 = 2; tp2 = 3.5; tp3 = 5; }
